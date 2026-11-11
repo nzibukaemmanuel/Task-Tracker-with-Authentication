@@ -1,108 +1,126 @@
-# Task Tracker – Database: Lab Explanation
+# Task Tracker with Authentication: Lab Explanation
 
 ## Overview
 
-This lab takes the in-memory RESTful Task Tracker API and gives it a real database. Tasks are now stored in a PostgreSQL `tasks` table, so they survive server restarts and redeploys. The API surface is almost unchanged; what changes is everything underneath it: the model runs SQL, every call is asynchronous, and database settings come from environment variables.
+This lab secures the existing Task Tracker API. Before, every route was public: anyone could view or change any task. Now:
+
+- Only registered users can log in and create tasks.
+- Users can only manage their own tasks.
+- Admins can view and manage all tasks, and list all users.
+
+The work builds in layers, and each layer relies on the one before it: **users in the database → register and log in → token verification → route protection → ownership → roles**.
 
 ## Requirements and how each is met
 
+### 1. User management
+
 | Requirement | How the project meets it |
 |---|---|
-| Connect Express to PostgreSQL | `config/db.js` creates one `pg` connection pool from the `DB_*` variables and shares it across the app. |
-| Store database settings in environment variables | `.env` (git-ignored) holds `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; `.env.example` documents them; dotenv loads them. |
-| Design a `tasks` table | `db/schema.sql` defines `id`, `title`, `description`, `completed` and `created_at`. `npm run db:init` applies it and is safe to re-run. |
-| Full CRUD against the database | `models/Task.js` implements `getAll`, `getById`, `create`, `update`, `delete` (plus `count`) with SQL. |
-| Use async/await | Every model method and controller is `async`. |
-| Handle database errors centrally | Each controller wraps calls in `try/catch` and forwards failures with `next(error)` to `errorMiddleware`, which returns a 500. |
-| Verify the connection | `GET /db-test` runs `SELECT NOW()`, and `GET /health` reports the task count from the database. |
-| Test the API | Jest and Supertest integration tests run against a real, separate test database. |
+| User model with name, email, password, role | `db/schema.sql` defines the `users` table; `models/User.js` reads and writes it. `email` is `UNIQUE` and `role` is limited to `user` or `admin` by a `CHECK` constraint. |
+| Hash passwords with bcrypt before storing | `authController.register` calls `bcrypt.hash(password, 10)`. Only the hash is stored in `password_hash`, and no endpoint ever returns it. |
+| `POST /auth/register` | Validates `name`, `email` and `password` (min 8 characters), normalises the email, creates a `user`, returns a token. A duplicate email returns `409`. |
+| `POST /auth/login` | Compares the password with `bcrypt.compare` and returns a token. Served at both `/auth/*` and `/api/auth/*`. |
 
-## Tasks the lab walks through
+### 2. JWT authentication
 
-1. **Set up PostgreSQL.** Install it locally and create an empty `task_tracker_db` database.
-2. **Add the driver and configuration.** Install `pg`, add the `DB_*` variables, and create the connection pool.
-3. **Create the schema.** Write `schema.sql` and a small `db/init.js` script that runs it.
-4. **Rewrite the model.** Replace the array operations with parameterised SQL queries.
-5. **Make the controllers async.** Add `await`, `try/catch` and `next(error)`.
-6. **Add diagnostics.** Add `/db-test` and make `/health` count rows in the table.
-7. **Test against a database.** Run the suite on an isolated test database.
-8. **Deploy.** Provision a managed PostgreSQL instance alongside the web service on Render.
+| Requirement | How the project meets it |
+|---|---|
+| Generate a JWT after login | `signToken` in `authController.js` signs `{ sub: <user id> }`. Registration returns one too. |
+| Secret key in an environment variable | `config/config.js` reads `JWT_SECRET`. There is **no default**: the server refuses to start without it. |
+| Token expiration | `JWT_EXPIRES_IN` (default `1h`) is passed to `jwt.sign`. |
+| Middleware that verifies the `Authorization` header | `middleware/authMiddleware.js` (`authenticate`) reads `Authorization: Bearer <token>`, verifies signature and expiry, loads the user and sets `req.user`. |
+| Reject unauthorized requests with proper status codes | `401` for a missing token (`Authentication required`), an expired one (`Token expired`), a bad or forged one (`Invalid token`) and a deleted user (`User no longer exists`). |
 
-## Database schema
+### 3. Route protection
 
-```sql
-CREATE TABLE IF NOT EXISTS tasks (
-  id          SERIAL PRIMARY KEY,
-  title       VARCHAR(255) NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  completed   BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+| Requirement | How the project meets it |
+|---|---|
+| Protect create, update and delete | `routes/taskRoutes.js` calls `router.use(authenticate)` before any route, so **every** task route needs a token, including reads. |
+| Users only access their own tasks | `models/Task.js` adds `AND user_id = <id>` to every read, update and delete. The owner is taken from the token when a task is created. |
+| User A cannot delete User B's task | The delete query matches nothing, so the response is `404 Task not found`, the same as for a task that does not exist. |
 
-The database now generates `id` (an integer, not a UUID) and the timestamp. The model renames `created_at` to `createdAt` in its queries so the JSON stays the same as the in-memory version.
+### 4. Role-based access control
 
-## API
+| Requirement | How the project meets it |
+|---|---|
+| Extend middleware with authorization | `middleware/roleMiddleware.js` exports `authorize(...roles)`, used after `authenticate`. Wrong role returns `403`. |
+| Admin: view all users | `GET /api/users` is guarded by `authenticate` then `authorize("admin")`. |
+| Admin: manage all tasks | For admins the ownership condition is skipped, so they can list, read, replace, update and delete any task. |
+| Admins are not self-service | `register` never reads a role from the request. `npm run create-admin` (`db/createAdmin.js`) is the only way to create or promote one. |
 
-| Method | Endpoint | Purpose | Success |
-|---|---|---|---|
-| GET | `/` | Welcome message | 200 |
-| GET | `/health` | Status, uptime, task count from the database | 200 |
-| GET | `/db-test` | Confirms the database connection | 200 |
-| GET | `/api/tasks` | List all tasks | 200 |
-| GET | `/api/tasks/:id` | Get one task | 200 |
-| POST | `/api/tasks` | Create a task | 201 |
-| PATCH | `/api/tasks/:id` | Partially update a task | 200 |
-| DELETE | `/api/tasks/:id` | Delete a task | 200 |
+### 5. Error handling and responses
 
-Errors always return JSON with `status: "error"` and a `message`:
+| Requirement | How the project meets it |
+|---|---|
+| Meaningful errors for invalid credentials, missing tokens, unauthorized access, expired tokens | `401 Invalid email or password`, `401 Authentication required`, `403 You do not have permission`, `401 Token expired`. |
+| Consistent JSON and proper status codes | Errors are `{ "status": "error", "message": "..." }` everywhere (controllers, auth middleware, 404 handler, central error handler). Successes are `{ "status": "success", ... }`. Codes used: 200, 201, 400, 401, 403, 404, 409, 500. |
 
-- **400:** missing or invalid title, empty PATCH body, wrong field type, malformed JSON.
-- **404:** task not found (including a non-numeric id) or unknown route.
-- **500:** unexpected errors, such as the database being unreachable.
+### 6. Environment configuration
 
-## How it works
+| Requirement | How the project meets it |
+|---|---|
+| Sensitive data in `.env`, loaded with dotenv | `JWT_SECRET`, `JWT_EXPIRES_IN` and the `DB_*` settings come from `.env`. `.env.example` documents them. |
+| Never hardcode secrets | No secret appears in the source. The tests supply their own throwaway value, only inside the test run. |
+| Do not commit `.env` | `.gitignore` excludes it. |
 
-1. `express.json()` parses the request body and the router picks a controller.
-2. The controller validates input. Invalid input gets a 400 immediately; ids that are not valid integers get a 404 without touching the database.
-3. The controller `await`s a model method, which runs a parameterised query on the shared pool.
-4. The controller sends the JSON response. Any thrown error goes through `next(error)` to the error middleware, which logs it and replies with its `statusCode` or 500, adding the stack trace only when `NODE_ENV=development`.
+> The lab's example uses `DB_URI`. This project already configured PostgreSQL with separate `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` variables, and keeps them.
+
+## How a request flows
+
+A request to `DELETE /api/tasks/7`:
+
+1. `express.json()` parses the body, and the router sends the request to `taskRoutes`.
+2. **`authenticate`** reads the `Authorization` header and verifies the JWT with `JWT_SECRET`. A bad token ends here with `401`.
+3. It loads the user from the database. A deleted user ends here with `401`. Otherwise `req.user` is set.
+4. **`deleteTask`** validates the id (a non-integer returns `404` without touching the database).
+5. **`Task.delete(id, req.user)`** runs `DELETE ... WHERE id = $1 AND user_id = $2`. The `AND user_id` part is left out for admins.
+6. No row deleted means `404`; otherwise `200` with the deleted task.
 
 ## Key design decisions
 
-- **Parameterised queries.** Every query uses `$1, $2, ...` placeholders, so user input is never concatenated into SQL. This prevents SQL injection.
-- **Connection pool.** One shared `pg` Pool reuses connections instead of opening a new one per request.
-- **PATCH with COALESCE.** The update query uses `COALESCE($n, column)`, so fields that were not sent keep their current values. `id` and `created_at` are never writable.
-- **Id validation.** Ids are checked against the integer range before querying, so a bad id returns a clean 404 rather than a database error.
-- **App and server are separate.** `app.js` builds the app and `server.js` only listens, so tests can load the app without opening a port.
+- **The token carries only the user id.** The role and existence of the user are read from the database on every request, so a deleted or demoted user loses access immediately instead of when the token expires.
+- **Ownership lives in SQL.** One helper in `models/Task.js` adds the condition to every query, so no route can forget it. Putting the check in the query also avoids a gap between "check" and "act".
+- **404 for other people's tasks, not 403.** A 403 would confirm that the task exists. A 404 reveals nothing.
+- **Same login error for a wrong password and an unknown email.** Login cannot be used to discover which emails are registered.
+- **bcrypt, 10 rounds.** Slow on purpose, salted automatically, so stolen hashes are expensive to crack.
+- **The signature is checked before the expiry.** An expired token that is also forged reports `Invalid token`, not `Token expired`, so a forger learns nothing.
+- **No default `JWT_SECRET`.** A default would let anyone who reads the source forge tokens, including admin ones.
+- **Admins are created out of band.** Nothing reachable over HTTP can grant the admin role.
+- **PUT and PATCH both exist.** PUT replaces the whole task (`title` required, other fields reset to defaults). PATCH changes only the fields sent.
 
 ## Testing
 
-`npm test` sends real HTTP requests with Supertest against a real PostgreSQL database. To protect real data:
+`npm test` runs four suites against a separate `<DB_NAME>_test` database (115 tests):
 
-- `tests/testEnv.js` points the app at a separate database named `<DB_NAME>_test`.
-- `tests/globalSetup.js` creates that database and the table if they do not exist, so `DB_USER` must be allowed to create databases.
-- The table is truncated before every test, so tests do not depend on each other.
+- `auth.test.js`: registration and login validation, duplicates, hashing, token contents.
+- `api.test.js`: token verification (missing, wrong scheme, garbage, forged, tampered, expired, deleted user), protection of every task route, CRUD, PUT, ownership, admin access and response formats.
+- `admin.test.js`: the `create-admin` command, the `authorize` middleware and `GET /api/users`.
+- `config.test.js`: the server refuses to start without `JWT_SECRET`.
 
-The suite covers the welcome route, `/health`, `/db-test`, create, read, update and delete, validation errors, invalid ids, rows actually persisting in the database, unknown routes, and 500 responses when the database fails.
+A Postman collection in `docs/postman/` walks through the same flows by hand.
 
 ## Running the project
 
 ```bash
 npm install
 # create an empty database named task_tracker_db, then copy .env.example to .env
-npm run db:init   # creates the tasks table
-npm run dev       # development with nodemon
-npm start         # production
-npm test          # integration tests
+# and set JWT_SECRET (node -p "require('crypto').randomBytes(32).toString('hex')")
+npm run db:init        # creates the users and tasks tables
+npm run create-admin   # optional: ADMIN_EMAIL and ADMIN_PASSWORD
+npm run dev            # development with nodemon
+npm test               # integration tests
 ```
 
 ## Deployment
 
-`render.yaml` defines a web service and a managed PostgreSQL database, and wires the `DB_*` variables from the database into the service. The start command runs `npm run db:init && npm start`, so the table is created on each deploy. Data now survives restarts. The free web service still sleeps when idle, and the free database's retention follows Render's current terms.
+`render.yaml` defines a web service and a managed PostgreSQL database, wires the `DB_*` variables, and generates a random `JWT_SECRET`. The start command runs `npm run db:init && npm start`. Create the first admin from the Render shell with `npm run create-admin`.
 
-## Limitations
+## Limitations and extensions
 
-- No authentication or pagination.
-- No migration tooling: the schema is a single idempotent SQL file.
-- `config/db.js` does not enable SSL, so connecting from your own machine to a Render database would need extra configuration.
+Not implemented (the lab lists them as optional): refresh tokens, password reset, email verification, rate limiting, Helmet, logout and session invalidation, activity logging, profile management and Swagger docs.
+
+Other limits:
+
+- A token is valid until it expires, unless the user is deleted.
+- Tasks created before authentication have no owner and are visible only to admins.
+- No pagination and no migration tooling: the schema is a single idempotent SQL file.

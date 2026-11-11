@@ -25,7 +25,7 @@ app.use(express.json());
 app.get("/", (req, res) => {
   res.status(200).json({
     status: "success",
-    message: "Welcome to the RESTful Task Tracker API",
+    message: "Welcome to the Task Tracker API with Authentication",
   });
 });
 

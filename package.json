@@ -1,8 +1,8 @@
 {
-  "name": "restful-task-tracker",
+  "name": "task-tracker-with-authentication",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Task Tracker API secured with JWT authentication and role-based access control",
+  "main": "server.js",
   "scripts": {
     "test": "jest --runInBand",
     "start": "node server.js",
@@ -12,14 +12,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nzibukaemmanuel/RESTful-Task-Tracker.git"
+    "url": "git+https://github.com/nzibukaemmanuel/Task-Tracker-with-Authentication.git"
   },
-  "keywords": [],
+  "keywords": ["express", "postgresql", "jwt", "bcrypt", "rbac"],
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/nzibukaemmanuel/RESTful-Task-Tracker/issues"
+    "url": "https://github.com/nzibukaemmanuel/Task-Tracker-with-Authentication/issues"
   },
-  "homepage": "https://github.com/nzibukaemmanuel/RESTful-Task-Tracker#readme",
+  "homepage": "https://github.com/nzibukaemmanuel/Task-Tracker-with-Authentication#readme",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.10",
