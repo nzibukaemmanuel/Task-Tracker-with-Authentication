@@ -21,7 +21,9 @@ const authenticate = async (req, res, next) => {
     // A forged, tampered or expired token throws.
     let payload;
     try {
-      payload = jwt.verify(token, config.jwtSecret);
+      // Pin the algorithm: only tokens we signed (HS256) are accepted, never
+      // one that claims a different algorithm in its own header.
+      payload = jwt.verify(token, config.jwtSecret, { algorithms: ["HS256"] });
     } catch (error) {
       // Tell the client WHY, so an app knows whether to ask the user to log
       // in again (expired) or treat the token as broken (invalid).

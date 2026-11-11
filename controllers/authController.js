@@ -20,6 +20,7 @@ const isValidEmail = (email) => {
 // looked up in the database when needed, so it can never go stale.
 const signToken = (user) =>
   jwt.sign({ sub: user.id }, config.jwtSecret, {
+    algorithm: "HS256",
     expiresIn: config.jwtExpiresIn,
   });
 

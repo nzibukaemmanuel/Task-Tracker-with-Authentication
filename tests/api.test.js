@@ -655,3 +655,95 @@ describe("Auth paths", () => {
     expect(me.status).toBe(200);
   });
 });
+
+describe("Secure error handling", () => {
+  const SECRET_DETAIL = 'password authentication failed for user "postgres"';
+  const withEnv = async (NODE_ENV, fn) => {
+    const saved = process.env.NODE_ENV;
+    process.env.NODE_ENV = NODE_ENV;
+    try {
+      return await fn();
+    } finally {
+      process.env.NODE_ENV = saved;
+    }
+  };
+
+  test.each(["test", "production"])(
+    "a 500 hides internal details outside development (%s)",
+    async (env) => {
+      jest.spyOn(pool, "query").mockRejectedValueOnce(new Error(SECRET_DETAIL));
+
+      const res = await withEnv(env, () => request(app).get("/db-test"));
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({
+        status: "error",
+        message: "Internal Server Error",
+      });
+      expect(JSON.stringify(res.body)).not.toContain("postgres");
+    }
+  );
+
+  test("the real error is still logged on the server", async () => {
+    jest.spyOn(pool, "query").mockRejectedValueOnce(new Error(SECRET_DETAIL));
+
+    await request(app).get("/db-test");
+
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining(SECRET_DETAIL)
+    );
+  });
+
+  test("development still shows the message and stack for debugging", async () => {
+    jest.spyOn(pool, "query").mockRejectedValueOnce(new Error(SECRET_DETAIL));
+
+    const res = await withEnv("development", () =>
+      request(app).get("/db-test")
+    );
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe(SECRET_DETAIL);
+    expect(res.body.stack).toBeDefined();
+  });
+
+  test("4xx messages are kept, since they are written for the client", async () => {
+    const res = await request(app)
+      .post("/api/tasks")
+      .set(bearer(token))
+      .set("Content-Type", "application/json")
+      .send("{bad");
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).not.toBe("Internal Server Error");
+  });
+});
+
+describe("JWT algorithm pinning", () => {
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+
+  test('rejects an unsigned token ("alg": "none")', async () => {
+    const unsigned = `${b64({ alg: "none", typ: "JWT" })}.${b64({ sub: userId })}.`;
+
+    const res = await api.get("/api/tasks", unsigned);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid token");
+  });
+
+  test("rejects a token signed with another HMAC algorithm (HS512)", async () => {
+    const other = jwt.sign({ sub: userId }, config.jwtSecret, {
+      algorithm: "HS512",
+    });
+
+    const res = await api.get("/api/tasks", other);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid token");
+  });
+
+  test("issued tokens use HS256", async () => {
+    const { header } = jwt.decode(token, { complete: true });
+
+    expect(header.alg).toBe("HS256");
+  });
+});

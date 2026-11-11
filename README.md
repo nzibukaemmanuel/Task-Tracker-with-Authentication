@@ -65,7 +65,7 @@ node -p "require('crypto').randomBytes(32).toString('hex')"
 | `DB_HOST` / `DB_PORT` | – | PostgreSQL server address |
 | `DB_NAME` | – | Database name (`task_tracker_db`) |
 | `DB_USER` / `DB_PASSWORD` | – | Database credentials |
-| `JWT_SECRET` | **required** | Signs every token. There is no default: the server refuses to start without it |
+| `JWT_SECRET` | **required** | Signs every token. No default: the server refuses to start without it, or if it is shorter than 32 characters or still the `.env.example` placeholder |
 | `JWT_EXPIRES_IN` | `1h` | How long a token stays valid |
 
 ### 4. Create the tables and run
@@ -117,7 +117,8 @@ Task-Tracker-with-Authentication/
 │   ├── notFoundMiddleware.js    # 404 for unknown routes
 │   └── errorMiddleware.js       # central error handler
 ├── docs/
-│   ├── LAB_EXPLANATION.md       # how each lab requirement is met
+│   ├── REVIEWER_GUIDE.md        # requirement-by-requirement guide for the reviewer
+│   ├── LAB_EXPLANATION.md       # design decisions and how a request flows
 │   └── postman/                 # Postman collection to try every flow
 ├── tests/                       # Jest + Supertest suite and test-database setup
 ├── jest.config.js
@@ -178,7 +179,9 @@ Security choices:
 - **Same message for a wrong password and an unknown email** ("Invalid email or password"), so login cannot be used to find out which emails exist.
 - Another user's task returns **404, not 403**, so task ids cannot be probed.
 - The **owner is taken from the token**, never from the request body, and cannot be changed.
-- `JWT_SECRET` comes from the environment and has **no default value**; `.env` is git-ignored.
+- `JWT_SECRET` comes from the environment and has **no default value**; it must be at least 32 characters and not the placeholder. `.env` is git-ignored.
+- Tokens are signed and verified with **HS256 only** (the algorithm is pinned), so a token claiming `none` or another algorithm is rejected.
+- **500 errors never leak internals**: outside development the client gets a generic "Internal Server Error" while the real error is logged on the server.
 - All SQL uses **parameterized queries**.
 
 ## API reference
@@ -250,6 +253,8 @@ curl -X DELETE http://localhost:5000/api/tasks/1 -H "Authorization: Bearer $TOKE
 
 A [Postman collection](docs/postman/task-tracker-auth.postman_collection.json) covering every flow is included.
 
+**Reviewing this lab?** Start with the [Reviewer Guide](docs/REVIEWER_GUIDE.md): it maps every requirement and rubric item to the code and shows how to verify it.
+
 ## Responses and errors
 
 Success responses look like `{ "status": "success", "data": ... }`; lists also include `count`, and register/login include a `token`.
@@ -263,7 +268,7 @@ All errors return JSON like `{ "status": "error", "message": "..." }`:
 | 403 | Logged in but the role is not allowed (e.g. `GET /api/users` as a user) | `You do not have permission` |
 | 404 | Task not found, someone else's task, non-numeric id, unknown route | `Task not found` |
 | 409 | Email already registered | `Email is already registered` |
-| 500 | Unexpected error, such as the database being unreachable | |
+| 500 | Unexpected error, such as the database being unreachable | `Internal Server Error` (the real cause is only in the server log; shown to the client only in development) |
 
 Every controller wraps its database calls in `try/catch` and forwards failures with `next(error)`. `errorMiddleware` logs the error and replies with its `statusCode` (or 500); the stack trace is included only when `NODE_ENV=development`.
 

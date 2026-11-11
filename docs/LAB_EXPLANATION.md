@@ -60,7 +60,7 @@ The work builds in layers, and each layer relies on the one before it: **users i
 | Requirement | How the project meets it |
 |---|---|
 | Sensitive data in `.env`, loaded with dotenv | `JWT_SECRET`, `JWT_EXPIRES_IN` and the `DB_*` settings come from `.env`. `.env.example` documents them. |
-| Never hardcode secrets | No secret appears in the source. The tests supply their own throwaway value, only inside the test run. |
+| Never hardcode secrets | No secret appears in the source, and a weak or placeholder `JWT_SECRET` stops the server from starting. The tests supply their own throwaway value, only inside the test run. |
 | Do not commit `.env` | `.gitignore` excludes it. |
 
 > The lab's example uses `DB_URI`. This project already configured PostgreSQL with separate `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` variables, and keeps them.
@@ -84,18 +84,20 @@ A request to `DELETE /api/tasks/7`:
 - **Same login error for a wrong password and an unknown email.** Login cannot be used to discover which emails are registered.
 - **bcrypt, 10 rounds.** Slow on purpose, salted automatically, so stolen hashes are expensive to crack.
 - **The signature is checked before the expiry.** An expired token that is also forged reports `Invalid token`, not `Token expired`, so a forger learns nothing.
-- **No default `JWT_SECRET`.** A default would let anyone who reads the source forge tokens, including admin ones.
+- **No default `JWT_SECRET`, and a strong one is enforced.** A default would let anyone who reads the source forge tokens, including admin ones, so startup fails if the secret is missing, shorter than 32 characters or the `.env.example` placeholder.
+- **The JWT algorithm is pinned to HS256** when verifying, so a token cannot choose its own algorithm (for example `none`).
+- **Secure error handling.** `errorMiddleware` logs every error in full but, outside development, returns only "Internal Server Error" for 5xx responses, so database messages, hostnames or SQL never reach the client. 4xx messages are written for the client and are kept.
 - **Admins are created out of band.** Nothing reachable over HTTP can grant the admin role.
 - **PUT and PATCH both exist.** PUT replaces the whole task (`title` required, other fields reset to defaults). PATCH changes only the fields sent.
 
 ## Testing
 
-`npm test` runs four suites against a separate `<DB_NAME>_test` database (115 tests):
+`npm test` runs four suites against a separate `<DB_NAME>_test` database (126 tests):
 
 - `auth.test.js`: registration and login validation, duplicates, hashing, token contents.
 - `api.test.js`: token verification (missing, wrong scheme, garbage, forged, tampered, expired, deleted user), protection of every task route, CRUD, PUT, ownership, admin access and response formats.
 - `admin.test.js`: the `create-admin` command, the `authorize` middleware and `GET /api/users`.
-- `config.test.js`: the server refuses to start without `JWT_SECRET`.
+- `config.test.js`: the server refuses to start without a strong `JWT_SECRET` (missing, too short, placeholder).
 
 A Postman collection in `docs/postman/` walks through the same flows by hand.
 
