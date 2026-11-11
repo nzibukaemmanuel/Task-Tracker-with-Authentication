@@ -5,7 +5,7 @@ const express = require("express");
 const config = require("./config/config");
 const pool = require("./config/db");
 
-const Task = require("./models/taskModel");
+const Task = require("./models/Task");
 const authRoutes = require("./routes/authRoutes");
 const userRoutes = require("./routes/userRoutes");
 const taskRoutes = require("./routes/taskRoutes");

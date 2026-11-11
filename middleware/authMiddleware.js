@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const config = require("../config/config");
-const User = require("../models/userModel");
+const User = require("../models/User");
 
 const unauthorized = (res, message) =>
   res.status(401).json({ status: "error", message });
@@ -45,19 +45,4 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// AUTHORIZATION: "are you allowed to do this?"
-// Use after authenticate to restrict a route to certain roles, e.g.
-//   router.get("/users", authenticate, authorize("admin"), listUsers);
-// 401 = we don't know who you are; 403 = we know, and you may not do this.
-const authorize =
-  (...roles) =>
-  (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ status: "error", message: "You do not have permission" });
-    }
-    next();
-  };
-
-module.exports = { authenticate, authorize };
+module.exports = { authenticate };

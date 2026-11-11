@@ -1,4 +1,4 @@
-const Task = require("../models/taskModel");
+const Task = require("../models/Task");
 
 // Task ids are database integers; anything else cannot exist
 const isValidId = (id) => /^\d+$/.test(id) && Number(id) <= 2147483647;

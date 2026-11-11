@@ -11,7 +11,7 @@ This lab takes the in-memory RESTful Task Tracker API and gives it a real databa
 | Connect Express to PostgreSQL | `config/db.js` creates one `pg` connection pool from the `DB_*` variables and shares it across the app. |
 | Store database settings in environment variables | `.env` (git-ignored) holds `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; `.env.example` documents them; dotenv loads them. |
 | Design a `tasks` table | `db/schema.sql` defines `id`, `title`, `description`, `completed` and `created_at`. `npm run db:init` applies it and is safe to re-run. |
-| Full CRUD against the database | `models/taskModel.js` implements `getAll`, `getById`, `create`, `update`, `delete` (plus `count`) with SQL. |
+| Full CRUD against the database | `models/Task.js` implements `getAll`, `getById`, `create`, `update`, `delete` (plus `count`) with SQL. |
 | Use async/await | Every model method and controller is `async`. |
 | Handle database errors centrally | Each controller wraps calls in `try/catch` and forwards failures with `next(error)` to `errorMiddleware`, which returns a 500. |
 | Verify the connection | `GET /db-test` runs `SELECT NOW()`, and `GET /health` reports the task count from the database. |

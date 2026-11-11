@@ -64,22 +64,35 @@ Check the database connection at `GET /db-test`.
 ## Project structure
 
 ```
-Task-Tracker-Database/
-├── app.js                    # Express app: middleware, routes, /health, /db-test
-├── server.js                 # Entry point: starts listening on PORT
+Task-Tracker-with-Authentication/
+├── app.js                       # Express app: middleware, routes, /health, /db-test
+├── server.js                    # Entry point: starts listening on PORT
 ├── config/
-│   ├── config.js             # PORT and NODE_ENV
-│   └── db.js                 # PostgreSQL connection pool (reads DB_* variables)
+│   ├── config.js                # PORT, NODE_ENV, JWT secret and expiry
+│   └── db.js                    # PostgreSQL connection pool (reads DB_* variables)
 ├── db/
-│   ├── schema.sql            # tasks table definition
-│   └── init.js               # applies schema.sql (npm run db:init)
-├── models/taskModel.js       # SQL queries for tasks
-├── controllers/taskController.js  # Validation, responses, error forwarding
-├── routes/taskRoutes.js      # Maps methods and paths to controllers
-├── middleware/               # 404 and central error handler
-├── tests/                    # Jest + Supertest suite and test-database setup
+│   ├── schema.sql               # users and tasks tables
+│   ├── init.js                  # applies schema.sql (npm run db:init)
+│   └── createAdmin.js           # creates or promotes an admin (npm run create-admin)
+├── models/
+│   ├── User.js                  # SQL queries for users
+│   └── Task.js                  # SQL queries for tasks (scoped to the owner)
+├── controllers/
+│   ├── authController.js        # register, login, me
+│   ├── taskController.js        # Validation, responses, error forwarding
+│   └── userController.js        # Admin: list users
+├── routes/
+│   ├── authRoutes.js            # /auth and /api/auth
+│   ├── taskRoutes.js            # /api/tasks (all protected)
+│   └── userRoutes.js            # /api/users (admin only)
+├── middleware/
+│   ├── authMiddleware.js        # authenticate: verifies the JWT, sets req.user
+│   ├── roleMiddleware.js        # authorize(...roles): role-based access
+│   ├── notFoundMiddleware.js    # 404 for unknown routes
+│   └── errorMiddleware.js       # Central error handler
+├── tests/                       # Jest + Supertest suite and test-database setup
 ├── jest.config.js
-├── render.yaml               # Render blueprint (web service + PostgreSQL)
+├── render.yaml                  # Render blueprint (web service + PostgreSQL)
 └── .env.example
 ```
 

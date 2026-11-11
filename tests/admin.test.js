@@ -3,7 +3,7 @@ const request = require("supertest");
 const app = require("../app");
 const pool = require("../config/db");
 const createAdmin = require("../db/createAdmin");
-const { authorize } = require("../middleware/authMiddleware");
+const { authorize } = require("../middleware/roleMiddleware");
 
 beforeAll(() => {
   jest.spyOn(console, "error").mockImplementation(() => {});

@@ -1,4 +1,4 @@
-const User = require("../models/userModel");
+const User = require("../models/User");
 
 // GET /api/users (admin only: enforced by the route, see userRoutes.js)
 const getAllUsers = async (req, res, next) => {
