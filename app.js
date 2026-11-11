@@ -7,7 +7,8 @@ const pool = require("./config/db");
 
 const Task = require("./models/taskModel");
 const authRoutes = require("./routes/authRoutes");
-const taskRoutes =require("./routes/taskRoutes");
+const userRoutes = require("./routes/userRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const notFoundMiddleware = require("./middleware/notFoundMiddleware");
 const errorMiddleware = require("./middleware/errorMiddleware");
@@ -59,6 +60,9 @@ app.get("/db-test", async (req, res, next) => {
 
 // Auth routes: register and login
 app.use("/api/auth", authRoutes);
+
+// User routes (admin only)
+app.use("/api/users", userRoutes);
 
 // Task routes
 app.use("/api/tasks", taskRoutes);

@@ -26,6 +26,14 @@ class User {
     return rows[0] || null;
   }
 
+  // Every user, without password hashes (admin listing)
+  static async getAll() {
+    const { rows } = await pool.query(
+      `SELECT ${PUBLIC_COLUMNS} FROM users ORDER BY id`
+    );
+    return rows;
+  }
+
   static async findById(id) {
     const { rows } = await pool.query(
       `SELECT ${PUBLIC_COLUMNS} FROM users WHERE id = $1`,

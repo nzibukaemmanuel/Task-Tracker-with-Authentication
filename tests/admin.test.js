@@ -131,3 +131,73 @@ describe("authorize middleware", () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 });
+
+describe("GET /api/users (admin only)", () => {
+  const register = async (email, name = "User") =>
+    (
+      await request(app)
+        .post("/api/auth/register")
+        .send({ name, email, password: "password123" })
+    ).body;
+
+  const adminToken = async () => {
+    await createAdmin({ email: "admin@example.com", password: "adminpass123" });
+    return (await login("admin@example.com", "adminpass123")).body.token;
+  };
+
+  test("an admin sees every user", async () => {
+    await register("ada@example.com", "Ada");
+    await register("bob@example.com", "Bob");
+
+    const res = await request(app)
+      .get("/api/users")
+      .set("Authorization", `Bearer ${await adminToken()}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(3); // Ada, Bob and the admin
+    expect(res.body.data.map((u) => u.email)).toEqual(
+      expect.arrayContaining(["ada@example.com", "bob@example.com", "admin@example.com"])
+    );
+  });
+
+  test("never exposes passwords or hashes", async () => {
+    await register("ada@example.com");
+
+    const res = await request(app)
+      .get("/api/users")
+      .set("Authorization", `Bearer ${await adminToken()}`);
+
+    expect(JSON.stringify(res.body)).not.toMatch(/password|hash|\$2[aby]\$/i);
+  });
+
+  test("a regular user is refused with 403", async () => {
+    const { token } = await register("ada@example.com");
+
+    const res = await request(app)
+      .get("/api/users")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe("You do not have permission");
+  });
+
+  test("no token is refused with 401", async () => {
+    const res = await request(app).get("/api/users");
+
+    expect(res.status).toBe(401);
+  });
+
+  test("a promoted user gets access on their existing token only after the role changes", async () => {
+    const { token } = await register("ada@example.com");
+    expect(
+      (await request(app).get("/api/users").set("Authorization", `Bearer ${token}`)).status
+    ).toBe(403);
+
+    await createAdmin({ email: "ada@example.com", password: "password123" });
+
+    // The role is read from the database on each request, so the same token now works
+    expect(
+      (await request(app).get("/api/users").set("Authorization", `Bearer ${token}`)).status
+    ).toBe(200);
+  });
+});
