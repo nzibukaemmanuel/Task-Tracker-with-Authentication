@@ -123,13 +123,40 @@ describe("Token verification (authenticate middleware)", () => {
     const res = await api.get("/api/tasks", "not.a.token");
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe("Invalid or expired token");
+    expect(res.body.message).toBe("Invalid token");
   });
 
   test("rejects a token signed with the wrong secret", async () => {
     const forged = jwt.sign({ sub: userId }, "wrong-secret");
 
-    expect((await api.get("/api/tasks", forged)).status).toBe(401);
+    const res = await api.get("/api/tasks", forged);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid token");
+  });
+
+  test("an expired token with a forged signature is invalid, not expired", async () => {
+    // The signature is checked before the expiry, so a forger learns nothing
+    const forgedExpired = jwt.sign({ sub: userId }, "wrong-secret", {
+      expiresIn: -10,
+    });
+
+    const res = await api.get("/api/tasks", forgedExpired);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid token");
+  });
+
+  test("rejects a token whose payload was tampered with", async () => {
+    const [header, , signature] = token.split(".");
+    const payload = Buffer.from(JSON.stringify({ sub: 999 })).toString(
+      "base64url"
+    );
+
+    const res = await api.get("/api/tasks", `${header}.${payload}.${signature}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid token");
   });
 
   test("rejects an expired token", async () => {
@@ -140,7 +167,7 @@ describe("Token verification (authenticate middleware)", () => {
     const res = await api.get("/api/tasks", expired);
 
     expect(res.status).toBe(401);
-    expect(res.body.message).toBe("Invalid or expired token");
+    expect(res.body.message).toBe("Token expired");
   });
 
   test("a valid token for a deleted user stops working", async () => {

@@ -22,8 +22,15 @@ const authenticate = async (req, res, next) => {
     let payload;
     try {
       payload = jwt.verify(token, config.jwtSecret);
-    } catch {
-      return unauthorized(res, "Invalid or expired token");
+    } catch (error) {
+      // Tell the client WHY, so an app knows whether to ask the user to log
+      // in again (expired) or treat the token as broken (invalid).
+      return unauthorized(
+        res,
+        error instanceof jwt.TokenExpiredError
+          ? "Token expired"
+          : "Invalid token"
+      );
     }
 
     // A valid token is not enough: the user must still exist. This way a
