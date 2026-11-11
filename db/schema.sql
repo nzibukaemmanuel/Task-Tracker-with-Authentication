@@ -19,3 +19,9 @@ CREATE TABLE IF NOT EXISTS tasks (
 
 -- For databases created before the description column existed
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+
+-- Every task belongs to a user; deleting a user deletes their tasks.
+-- (Tasks created before authentication have no owner: only admins see them.)
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks (user_id);

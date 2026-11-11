@@ -365,3 +365,130 @@ describe("Unknown routes", () => {
     expect(res.body.message).toContain("GET /nope");
   });
 });
+
+// --- ownership and admin access ---------------------------------------------
+const registerOther = async (email = "other@example.com", name = "Other") => {
+  const res = await request(app)
+    .post("/api/auth/register")
+    .send({ name, email, password: "password123" });
+  return res.body;
+};
+
+// Admins cannot be created through the API on purpose, so promote in SQL
+const makeAdmin = async () => {
+  const { token: t } = await registerOther("admin@example.com", "Admin");
+  await pool.query("UPDATE users SET role = 'admin' WHERE email = $1", [
+    "admin@example.com",
+  ]);
+  return t;
+};
+
+describe("Task ownership", () => {
+  let otherToken;
+
+  beforeEach(async () => {
+    otherToken = (await registerOther()).token;
+  });
+
+  test("a new task is owned by the logged-in user, not by the request body", async () => {
+    const { body } = await createTask({ title: "Mine", userId: 999 });
+
+    expect(body.data.userId).toBe(userId);
+  });
+
+  test("users only see their own tasks in the list", async () => {
+    await createTask({ title: "Mine" });
+    await api.post("/api/tasks", { title: "Theirs" }, otherToken);
+
+    const res = await api.get("/api/tasks");
+
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].title).toBe("Mine");
+  });
+
+  test("another user's task looks like it does not exist (404)", async () => {
+    const { body } = await createTask({ title: "Private" });
+    const id = body.data.id;
+
+    expect((await api.get(`/api/tasks/${id}`, otherToken)).status).toBe(404);
+    expect(
+      (await api.patch(`/api/tasks/${id}`, { completed: true }, otherToken))
+        .status
+    ).toBe(404);
+    expect((await api.delete(`/api/tasks/${id}`, otherToken)).status).toBe(404);
+
+    // ...and the task is untouched
+    const after = await api.get(`/api/tasks/${id}`);
+    expect(after.status).toBe(200);
+    expect(after.body.data.completed).toBe(false);
+  });
+
+  test("cannot change the owner through PATCH", async () => {
+    const { body } = await createTask();
+
+    const res = await api.patch(`/api/tasks/${body.data.id}`, {
+      userId: 999,
+      completed: true,
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.userId).toBe(userId);
+  });
+
+  test("deleting a user deletes their tasks", async () => {
+    await createTask();
+    await pool.query("DELETE FROM users WHERE id = $1", [userId]);
+
+    const { rows } = await pool.query("SELECT 1 FROM tasks");
+    expect(rows).toHaveLength(0);
+  });
+});
+
+describe("Admin access", () => {
+  let adminToken;
+
+  beforeEach(async () => {
+    adminToken = await makeAdmin();
+  });
+
+  test("an admin sees every user's tasks", async () => {
+    await createTask({ title: "User task" });
+
+    const res = await api.get("/api/tasks", adminToken);
+
+    expect(res.body.count).toBe(1);
+    expect(res.body.data[0].title).toBe("User task");
+  });
+
+  test("an admin can read, update and delete any user's task", async () => {
+    const { body } = await createTask({ title: "User task" });
+    const id = body.data.id;
+
+    expect((await api.get(`/api/tasks/${id}`, adminToken)).status).toBe(200);
+
+    const updated = await api.patch(
+      `/api/tasks/${id}`,
+      { completed: true },
+      adminToken
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.body.data.completed).toBe(true);
+
+    expect((await api.delete(`/api/tasks/${id}`, adminToken)).status).toBe(200);
+    expect((await api.get(`/api/tasks/${id}`)).status).toBe(404);
+  });
+
+  test("a task an admin creates belongs to the admin", async () => {
+    const res = await api.post("/api/tasks", { title: "Admin's" }, adminToken);
+
+    expect(res.body.data.userId).not.toBe(userId);
+    expect((await api.get("/api/tasks")).body.count).toBe(0);
+  });
+
+  test("tasks with no owner are visible to admins only", async () => {
+    await pool.query("INSERT INTO tasks (title) VALUES ('legacy')");
+
+    expect((await api.get("/api/tasks")).body.count).toBe(0);
+    expect((await api.get("/api/tasks", adminToken)).body.count).toBe(1);
+  });
+});

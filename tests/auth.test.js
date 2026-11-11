@@ -16,7 +16,7 @@ afterAll(async () => {
 
 // Tests run against the separate *_test database; start each test with no users.
 beforeEach(async () => {
-  await pool.query("TRUNCATE TABLE users RESTART IDENTITY");
+  await pool.query("TRUNCATE TABLE tasks, users RESTART IDENTITY");
 });
 
 const valid = {
