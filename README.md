@@ -212,3 +212,27 @@ Notes:
 - **pg**: PostgreSQL client
 - **dotenv**: loads `.env` into `process.env`
 - **nodemon** (dev), **jest** (dev), **supertest** (dev)
+
+## Authentication and authorization
+
+All `/api/tasks` routes require a JWT. Users only manage their own tasks; admins manage everyone's.
+
+| Method | Route | Access | Purpose |
+|---|---|---|---|
+| POST | `/api/auth/register` | public | Create an account (`name`, `email`, `password` ≥ 8 chars); returns a token |
+| POST | `/api/auth/login` | public | Log in; returns a token |
+| GET | `/api/auth/me` | logged in | Current user |
+| GET/POST | `/api/tasks` | logged in | List own tasks (admin: all) / create a task you own |
+| GET/PATCH/DELETE | `/api/tasks/:id` | owner or admin | Another user's task returns `404` |
+
+Send the token on every request: `Authorization: Bearer <token>`.
+
+New env vars: `JWT_SECRET` (required in production), `JWT_EXPIRES_IN` (default `1h`).
+
+Admins cannot be created through the API. Create one with:
+
+```bash
+ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=a-strong-password npm run create-admin
+```
+
+Existing databases: re-run `npm run db:init` to add the `users` table and `tasks.user_id` column. Tasks created before authentication have no owner and are visible only to admins.
