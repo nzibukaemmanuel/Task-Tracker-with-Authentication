@@ -24,7 +24,7 @@ const signToken = (user) =>
   });
 
 const badRequest = (res, message) =>
-  res.status(400).json({ success: false, message });
+  res.status(400).json({ status: "error", message });
 
 // POST /api/auth/register
 const register = async (req, res, next) => {
@@ -50,7 +50,7 @@ const register = async (req, res, next) => {
     });
 
     res.status(201).json({
-      success: true,
+      status: "success",
       message: "Registered successfully",
       token: signToken(user),
       data: user,
@@ -60,7 +60,7 @@ const register = async (req, res, next) => {
     if (error.code === "23505") {
       return res
         .status(409)
-        .json({ success: false, message: "Email is already registered" });
+        .json({ status: "error", message: "Email is already registered" });
     }
     next(error);
   }
@@ -83,13 +83,13 @@ const login = async (req, res, next) => {
     if (!valid) {
       return res
         .status(401)
-        .json({ success: false, message: "Invalid email or password" });
+        .json({ status: "error", message: "Invalid email or password" });
     }
 
     delete user.passwordHash;
 
     res.status(200).json({
-      success: true,
+      status: "success",
       message: "Logged in successfully",
       token: signToken(user),
       data: user,
@@ -101,7 +101,7 @@ const login = async (req, res, next) => {
 
 // GET /api/auth/me (req.user is set by the authenticate middleware)
 const me = (req, res) => {
-  res.status(200).json({ success: true, data: req.user });
+  res.status(200).json({ status: "success", data: req.user });
 };
 
 module.exports = { register, login, me };

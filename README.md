@@ -127,7 +127,8 @@ Base URL: `http://localhost:5000`
 | GET | `/api/tasks` | List all tasks | 200 |
 | GET | `/api/tasks/:id` | Get one task | 200 |
 | POST | `/api/tasks` | Create a task | 201 |
-| PATCH | `/api/tasks/:id` | Update `title`, `description` and/or `completed` | 200 |
+| PUT | `/api/tasks/:id` | Replace the whole task (`title` required; other fields reset to defaults) | 200 |
+| PATCH | `/api/tasks/:id` | Update only the fields you send | 200 |
 | DELETE | `/api/tasks/:id` | Delete a task | 200 |
 
 ### Examples
@@ -150,11 +151,11 @@ curl -X PATCH http://localhost:5000/api/tasks/1 \
 curl -X DELETE http://localhost:5000/api/tasks/1
 ```
 
-Success responses look like `{ "success": true, "data": ... }`; lists also include `count`.
+Success responses look like `{ "status": "success", "data": ... }`; lists also include `count`.
 
 ## Error handling
 
-All errors return JSON with `success: false` and a `message`.
+All errors return JSON like `{ "status": "error", "message": "..." }`.
 
 | Status | When |
 |---|---|
@@ -168,7 +169,7 @@ Every controller wraps its database calls in `try/catch` and forwards failures w
 
 - **Parameterized queries:** every query uses `$1, $2, ...` placeholders, so user input is never concatenated into SQL (no SQL injection).
 - **Connection pool:** `config/db.js` exports one `pg` Pool shared by the whole app.
-- **PATCH, not PUT:** updates are partial (`COALESCE` keeps columns you did not send), and `id` and `created_at` are never writable.
+- **PATCH and PUT:** PATCH is a partial update (`COALESCE` keeps columns you did not send); PUT replaces the whole task. `id`, `created_at` and the owner are never writable.
 - **App and server are separate:** `app.js` builds the app and `server.js` only listens, so tests can load the app without opening a port.
 - **Out of scope:** authentication, pagination, migrations tooling.
 
@@ -219,13 +220,13 @@ All `/api/tasks` routes need a JWT, sent as `Authorization: Bearer <token>`. Use
 
 | Method | Route | Access |
 |---|---|---|
-| POST | `/api/auth/register` | public: `name`, `email`, `password` (min 8 chars); returns a token |
-| POST | `/api/auth/login` | public: returns a token |
+| POST | `/api/auth/register` (also `/auth/register`) | public: `name`, `email`, `password` (min 8 chars); returns a token |
+| POST | `/api/auth/login` (also `/auth/login`) | public: returns a token |
 | GET | `/api/auth/me` | logged in: the current user |
 | GET, POST | `/api/tasks` | logged in: own tasks (admin: all) / create a task you own |
-| GET, PATCH, DELETE | `/api/tasks/:id` | owner or admin (someone else's task returns `404`) |
+| GET, PUT, PATCH, DELETE | `/api/tasks/:id` | owner or admin (someone else's task returns `404`) |
 
-Env vars: `JWT_SECRET` (required in production), `JWT_EXPIRES_IN` (default `1h`).
+Env vars: `JWT_SECRET` (required: the server will not start without it), `JWT_EXPIRES_IN` (default `1h`).
 
 Admins cannot be created through the API. Create one (or promote an existing user) with:
 

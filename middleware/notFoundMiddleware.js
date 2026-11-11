@@ -1,6 +1,6 @@
 const notFoundMiddleware = (req, res, next) => {
   res.status(404).json({
-    success: false,
+    status: "error",
     message: `Route not found: ${req.method} ${req.originalUrl}`,
   });
 };

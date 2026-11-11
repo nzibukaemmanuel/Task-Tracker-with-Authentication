@@ -55,7 +55,7 @@ The database now generates `id` (an integer, not a UUID) and the timestamp. The 
 | PATCH | `/api/tasks/:id` | Partially update a task | 200 |
 | DELETE | `/api/tasks/:id` | Delete a task | 200 |
 
-Errors always return JSON with `success: false` and a `message`:
+Errors always return JSON with `status: "error"` and a `message`:
 
 - **400:** missing or invalid title, empty PATCH body, wrong field type, malformed JSON.
 - **404:** task not found (including a non-numeric id) or unknown route.

@@ -24,6 +24,8 @@ const bearer = (t) => ({ Authorization: `Bearer ${t}` });
 // Authenticated request helpers; they send the default user's token
 const api = {
   get: (url, t = token) => request(app).get(url).set(bearer(t)),
+  put: (url, body, t = token) =>
+    request(app).put(url).set(bearer(t)).send(body),
   post: (url, body, t = token) =>
     request(app).post(url).set(bearer(t)).send(body),
   patch: (url, body, t = token) =>
@@ -53,7 +55,7 @@ describe("Welcome and health", () => {
     const res = await request(app).get("/");
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect(res.body.status).toBe("success");
   });
 
   test("GET /health reports status, uptime and task count", async () => {
@@ -82,7 +84,7 @@ describe("GET /db-test", () => {
     const res = await request(app).get("/db-test");
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+    expect(res.body.status).toBe("success");
     expect(res.body.time).toBeDefined();
   });
 
@@ -92,7 +94,7 @@ describe("GET /db-test", () => {
     const res = await request(app).get("/db-test");
 
     expect(res.status).toBe(500);
-    expect(res.body.success).toBe(false);
+    expect(res.body.status).toBe("error");
   });
 });
 
@@ -221,7 +223,7 @@ describe("POST /api/tasks", () => {
     const res = await createTask(body);
 
     expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(res.body.status).toBe("error");
   });
 
   test("persists the task in the database", async () => {
@@ -243,7 +245,7 @@ describe("POST /api/tasks", () => {
       .send("{bad");
 
     expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(res.body.status).toBe("error");
   });
 });
 
@@ -517,5 +519,139 @@ describe("Admin access", () => {
 
     expect((await api.get("/api/tasks")).body.count).toBe(0);
     expect((await api.get("/api/tasks", adminToken)).body.count).toBe(1);
+  });
+});
+
+describe("PUT /api/tasks/:id (full replacement)", () => {
+  test("replaces the whole task and resets omitted fields to defaults", async () => {
+    const { body } = await createTask({ title: "Old", description: "gone" });
+    await api.patch(`/api/tasks/${body.data.id}`, { completed: true });
+
+    const res = await api.put(`/api/tasks/${body.data.id}`, { title: "New" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: body.data.id,
+      title: "New",
+      description: "",
+      completed: false,
+    });
+  });
+
+  test("sets every field when all are sent", async () => {
+    const { body } = await createTask();
+
+    const res = await api.put(`/api/tasks/${body.data.id}`, {
+      title: "  Full  ",
+      description: "  all fields ",
+      completed: true,
+    });
+
+    expect(res.body.data).toMatchObject({
+      title: "Full",
+      description: "all fields",
+      completed: true,
+    });
+  });
+
+  test("keeps the owner and createdAt", async () => {
+    const { body } = await createTask();
+
+    const res = await api.put(`/api/tasks/${body.data.id}`, {
+      title: "New",
+      userId: 999,
+      createdAt: "1999-01-01",
+    });
+
+    expect(res.body.data.userId).toBe(userId);
+    expect(res.body.data.createdAt).toBe(body.data.createdAt);
+  });
+
+  test.each([
+    ["missing title", {}],
+    ["empty title", { title: "  " }],
+    ["non-string description", { title: "x", description: 5 }],
+    ["non-boolean completed", { title: "x", completed: "yes" }],
+  ])("rejects %s with 400", async (_name, payload) => {
+    const { body } = await createTask();
+
+    const res = await api.put(`/api/tasks/${body.data.id}`, payload);
+
+    expect(res.status).toBe(400);
+    expect(res.body.status).toBe("error");
+  });
+
+  test("returns 404 for an unknown id", async () => {
+    expect((await api.put("/api/tasks/9999", { title: "x" })).status).toBe(404);
+  });
+
+  test("requires a token", async () => {
+    const res = await request(app).put("/api/tasks/1").send({ title: "x" });
+
+    expect(res.status).toBe(401);
+  });
+
+  test("another user cannot replace your task (404); an admin can", async () => {
+    const { body } = await createTask({ title: "Mine" });
+    const other = (await registerOther()).token;
+    const admin = await makeAdmin();
+
+    const denied = await api.put(`/api/tasks/${body.data.id}`, { title: "Hacked" }, other);
+    expect(denied.status).toBe(404);
+    expect((await api.get(`/api/tasks/${body.data.id}`)).body.data.title).toBe("Mine");
+
+    const allowed = await api.put(`/api/tasks/${body.data.id}`, { title: "By admin" }, admin);
+    expect(allowed.status).toBe(200);
+  });
+});
+
+describe("Response format", () => {
+  test("errors use { status: 'error', message }", async () => {
+    const res = await request(app).get("/api/tasks");
+
+    expect(res.body).toEqual({
+      status: "error",
+      message: "Authentication required",
+    });
+  });
+
+  test("successes use { status: 'success', ... }", async () => {
+    const res = await api.get("/api/tasks");
+
+    expect(res.body).toMatchObject({ status: "success", count: 0, data: [] });
+  });
+
+  test("unknown routes and server errors use the same shape", async () => {
+    expect((await request(app).get("/nope")).body.status).toBe("error");
+
+    jest.spyOn(pool, "query").mockRejectedValueOnce(new Error("db down"));
+    expect((await request(app).get("/db-test")).body.status).toBe("error");
+  });
+});
+
+describe("Auth paths", () => {
+  test.each(["/auth", "/api/auth"])("%s/register and %s/login both work", async (base) => {
+    const email = `${base.replace("/", "")}@example.com`.replace("/", "-");
+    const reg = await request(app)
+      .post(`${base}/register`)
+      .send({ name: "Path", email, password: "password123" });
+    expect(reg.status).toBe(201);
+
+    const login = await request(app)
+      .post(`${base}/login`)
+      .send({ email, password: "password123" });
+    expect(login.status).toBe(200);
+  });
+
+  test("a token from /auth works on /api/auth/me and vice versa", async () => {
+    const login = await request(app)
+      .post("/auth/login")
+      .send({ email: "user@example.com", password: "password123" });
+
+    const me = await request(app)
+      .get("/api/auth/me")
+      .set(bearer(login.body.token));
+
+    expect(me.status).toBe(200);
   });
 });

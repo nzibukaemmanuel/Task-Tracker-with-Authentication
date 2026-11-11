@@ -6,7 +6,7 @@ const getAllUsers = async (req, res, next) => {
     const users = await User.getAll();
 
     res.status(200).json({
-      success: true,
+      status: "success",
       count: users.length,
       data: users,
     });

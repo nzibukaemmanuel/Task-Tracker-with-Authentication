@@ -100,7 +100,7 @@ describe("POST /api/auth/register", () => {
     const res = await register(overrides);
 
     expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(res.body.status).toBe("error");
   });
 });
 

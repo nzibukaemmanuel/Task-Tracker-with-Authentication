@@ -4,7 +4,7 @@ const config = require("../config/config");
 const User = require("../models/userModel");
 
 const unauthorized = (res, message) =>
-  res.status(401).json({ success: false, message });
+  res.status(401).json({ status: "error", message });
 
 // AUTHENTICATION: "who is calling?"
 // Expects the header:  Authorization: Bearer <token>
@@ -55,7 +55,7 @@ const authorize =
     if (!req.user || !roles.includes(req.user.role)) {
       return res
         .status(403)
-        .json({ success: false, message: "You do not have permission" });
+        .json({ status: "error", message: "You do not have permission" });
     }
     next();
   };

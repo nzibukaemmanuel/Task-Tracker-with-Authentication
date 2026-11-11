@@ -24,7 +24,7 @@ app.use(express.json());
 // Welcome route
 app.get("/", (req, res) => {
   res.status(200).json({
-    success: true,
+    status: "success",
     message: "Welcome to the RESTful Task Tracker API",
   });
 });
@@ -49,7 +49,7 @@ app.get("/db-test", async (req, res, next) => {
   try {
     const result = await pool.query("SELECT NOW() AS now");
     res.status(200).json({
-      success: true,
+      status: "success",
       message: "Database connection successful",
       time: result.rows[0].now,
     });
@@ -59,7 +59,9 @@ app.get("/db-test", async (req, res, next) => {
 });
 
 // Auth routes: register and login
-app.use("/api/auth", authRoutes);
+// Served at /auth (as the lab spec names it) and /api/auth (alongside the
+// other /api routes); both reach the same handlers.
+app.use(["/auth", "/api/auth"], authRoutes);
 
 // User routes (admin only)
 app.use("/api/users", userRoutes);
