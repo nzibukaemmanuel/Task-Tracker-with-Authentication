@@ -1,0 +1,37 @@
+databases:
+  - name: task-tracker-db
+    databaseName: task_tracker_db
+    plan: free
+
+services:
+  - type: web
+    name: restful-task-tracker
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    # Create the tasks table (idempotent), then start the server
+    startCommand: npm run db:init && npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        fromDatabase:
+          name: task-tracker-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: task-tracker-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: task-tracker-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: task-tracker-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: task-tracker-db
+          property: password
