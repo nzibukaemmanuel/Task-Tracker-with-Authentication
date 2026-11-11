@@ -10,13 +10,7 @@ const {
   deleteTask,
 } = require("../controllers/taskController");
 
-const { authenticate } = require("../middleware/authMiddleware");
-
-// Every task route requires a logged-in user. This one line is what closes
-// the "all routes are public" hole; the controllers then scope by owner.
-router.use(authenticate);
-
-// Get all tasks (own tasks, or every task for admins)
+// Get all tasks
 router.get("/", getAllTasks);
 
 // Get a task by ID

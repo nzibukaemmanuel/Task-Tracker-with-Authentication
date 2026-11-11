@@ -35,5 +35,3 @@ services:
         fromDatabase:
           name: task-tracker-db
           property: password
-      - key: JWT_SECRET
-        generateValue: true

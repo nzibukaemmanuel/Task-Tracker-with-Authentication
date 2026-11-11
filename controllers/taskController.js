@@ -9,7 +9,7 @@ const notFound = (res) =>
 // GET /api/tasks
 const getAllTasks = async (req, res, next) => {
   try {
-    const tasks = await Task.getAll(req.user);
+    const tasks = await Task.getAll();
 
     res.status(200).json({
       success: true,
@@ -26,7 +26,7 @@ const getTaskById = async (req, res, next) => {
   try {
     if (!isValidId(req.params.id)) return notFound(res);
 
-    const task = await Task.getById(req.params.id, req.user);
+    const task = await Task.getById(req.params.id);
     if (!task) return notFound(res);
 
     res.status(200).json({ success: true, data: task });
@@ -50,7 +50,6 @@ const createTask = async (req, res, next) => {
     const newTask = await Task.create({
       title: title.trim(),
       description: typeof description === "string" ? description.trim() : "",
-      userId: req.user.id,
     });
 
     res.status(201).json({
@@ -98,15 +97,11 @@ const updateTask = async (req, res, next) => {
 
     if (!isValidId(req.params.id)) return notFound(res);
 
-    const updatedTask = await Task.update(
-      req.params.id,
-      {
-        title: title !== undefined ? title.trim() : undefined,
-        description: description !== undefined ? description.trim() : undefined,
-        completed,
-      },
-      req.user
-    );
+    const updatedTask = await Task.update(req.params.id, {
+      title: title !== undefined ? title.trim() : undefined,
+      description: description !== undefined ? description.trim() : undefined,
+      completed,
+    });
 
     if (!updatedTask) return notFound(res);
 
@@ -125,7 +120,7 @@ const deleteTask = async (req, res, next) => {
   try {
     if (!isValidId(req.params.id)) return notFound(res);
 
-    const deletedTask = await Task.delete(req.params.id, req.user);
+    const deletedTask = await Task.delete(req.params.id);
     if (!deletedTask) return notFound(res);
 
     res.status(200).json({

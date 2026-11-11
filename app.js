@@ -6,8 +6,7 @@ const config = require("./config/config");
 const pool = require("./config/db");
 
 const Task = require("./models/taskModel");
-const authRoutes = require("./routes/authRoutes");
-const taskRoutes =require("./routes/taskRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 const notFoundMiddleware = require("./middleware/notFoundMiddleware");
 const errorMiddleware = require("./middleware/errorMiddleware");
@@ -57,10 +56,7 @@ app.get("/db-test", async (req, res, next) => {
   }
 });
 
-// Auth routes (public: register and login; /me needs a token)
-app.use("/api/auth", authRoutes);
-
-// Task routes (protected)
+// Task routes
 app.use("/api/tasks", taskRoutes);
 
 // Error handling middleware
