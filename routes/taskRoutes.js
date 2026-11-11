@@ -10,6 +10,12 @@ const {
   deleteTask,
 } = require("../controllers/taskController");
 
+const { authenticate } = require("../middleware/authMiddleware");
+
+// Every task route requires a valid token. Router-level middleware runs for
+// all the routes below it, so no route can be added without protection.
+router.use(authenticate);
+
 // Get all tasks
 router.get("/", getAllTasks);
 

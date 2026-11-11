@@ -1,7 +1,9 @@
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 
 const app = require("../app");
 const pool = require("../config/db");
+const config = require("../config/config");
 
 // The error middleware logs every error; keep the test output readable.
 beforeAll(() => {
@@ -13,13 +15,38 @@ afterAll(async () => {
   await pool.end();
 });
 
-// Tests run against the separate *_test database; start each test empty.
-beforeEach(async () => {
-  await pool.query("TRUNCATE TABLE tasks RESTART IDENTITY");
-});
+// --- helpers ---------------------------------------------------------------
+let token; // token of the default logged-in test user
+let userId;
+
+const bearer = (t) => ({ Authorization: `Bearer ${t}` });
+
+// Authenticated request helpers; they send the default user's token
+const api = {
+  get: (url, t = token) => request(app).get(url).set(bearer(t)),
+  post: (url, body, t = token) =>
+    request(app).post(url).set(bearer(t)).send(body),
+  patch: (url, body, t = token) =>
+    request(app).patch(url).set(bearer(t)).send(body),
+  delete: (url, t = token) => request(app).delete(url).set(bearer(t)),
+};
 
 const createTask = (body = { title: "Write tests" }) =>
-  request(app).post("/api/tasks").send(body);
+  api.post("/api/tasks", body);
+
+// Tests run against the separate *_test database; start each test empty,
+// with one registered user whose token the helpers use.
+beforeEach(async () => {
+  await pool.query("TRUNCATE TABLE tasks, users RESTART IDENTITY");
+
+  const res = await request(app).post("/api/auth/register").send({
+    name: "Test User",
+    email: "user@example.com",
+    password: "password123",
+  });
+  token = res.body.token;
+  userId = res.body.data.id;
+});
 
 describe("Welcome and health", () => {
   test("GET / returns the welcome message", async () => {
@@ -44,7 +71,7 @@ describe("Welcome and health", () => {
 
     expect((await request(app).get("/health")).body.taskCount).toBe(2);
 
-    await request(app).delete(`/api/tasks/${created.body.data.id}`);
+    await api.delete(`/api/tasks/${created.body.data.id}`);
 
     expect((await request(app).get("/health")).body.taskCount).toBe(1);
   });
@@ -66,6 +93,82 @@ describe("GET /db-test", () => {
 
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
+  });
+});
+
+describe("Token verification (authenticate middleware)", () => {
+  test.each([
+    ["get", "/api/tasks"],
+    ["get", "/api/tasks/1"],
+    ["post", "/api/tasks"],
+    ["patch", "/api/tasks/1"],
+    ["delete", "/api/tasks/1"],
+    ["get", "/api/auth/me"],
+  ])("%s %s without a token returns 401", async (method, url) => {
+    const res = await request(app)[method](url);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Authentication required");
+  });
+
+  test("rejects a header that is not a Bearer token", async () => {
+    const res = await request(app)
+      .get("/api/tasks")
+      .set("Authorization", `Basic ${token}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  test("rejects a garbage token", async () => {
+    const res = await api.get("/api/tasks", "not.a.token");
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid or expired token");
+  });
+
+  test("rejects a token signed with the wrong secret", async () => {
+    const forged = jwt.sign({ sub: userId }, "wrong-secret");
+
+    expect((await api.get("/api/tasks", forged)).status).toBe(401);
+  });
+
+  test("rejects an expired token", async () => {
+    const expired = jwt.sign({ sub: userId }, config.jwtSecret, {
+      expiresIn: -10,
+    });
+
+    const res = await api.get("/api/tasks", expired);
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("Invalid or expired token");
+  });
+
+  test("a valid token for a deleted user stops working", async () => {
+    await pool.query("DELETE FROM users");
+
+    const res = await api.get("/api/tasks");
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe("User no longer exists");
+  });
+
+  test("GET /api/auth/me returns the token's user", async () => {
+    const res = await api.get("/api/auth/me");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toMatchObject({
+      id: userId,
+      email: "user@example.com",
+    });
+    expect(JSON.stringify(res.body)).not.toMatch(/password|hash/i);
+  });
+
+  test("auth routes stay public", async () => {
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "user@example.com", password: "password123" });
+
+    expect(res.status).toBe(200);
   });
 });
 
@@ -108,6 +211,7 @@ describe("POST /api/tasks", () => {
   test("rejects malformed JSON with 400", async () => {
     const res = await request(app)
       .post("/api/tasks")
+      .set(bearer(token))
       .set("Content-Type", "application/json")
       .send("{bad");
 
@@ -118,7 +222,7 @@ describe("POST /api/tasks", () => {
 
 describe("GET /api/tasks", () => {
   test("returns an empty list at first", async () => {
-    const res = await request(app).get("/api/tasks");
+    const res = await api.get("/api/tasks");
 
     expect(res.status).toBe(200);
     expect(res.body.count).toBe(0);
@@ -129,7 +233,7 @@ describe("GET /api/tasks", () => {
     await createTask({ title: "One" });
     await createTask({ title: "Two" });
 
-    const res = await request(app).get("/api/tasks");
+    const res = await api.get("/api/tasks");
 
     expect(res.body.count).toBe(2);
   });
@@ -137,14 +241,14 @@ describe("GET /api/tasks", () => {
   test("returns one task by id", async () => {
     const { body } = await createTask();
 
-    const res = await request(app).get(`/api/tasks/${body.data.id}`);
+    const res = await api.get(`/api/tasks/${body.data.id}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.title).toBe("Write tests");
   });
 
   test("returns 404 for an unknown id", async () => {
-    const res = await request(app).get("/api/tasks/9999");
+    const res = await api.get("/api/tasks/9999");
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe("Task not found");
@@ -153,16 +257,21 @@ describe("GET /api/tasks", () => {
   test.each(["does-not-exist", "-1", "1.5", "99999999999999"])(
     "returns 404 for invalid id %s",
     async (id) => {
-      const res = await request(app).get(`/api/tasks/${id}`);
+      const res = await api.get(`/api/tasks/${id}`);
 
       expect(res.status).toBe(404);
     }
   );
 
   test("returns 500 when the database fails", async () => {
-    jest.spyOn(pool, "query").mockRejectedValueOnce(new Error("db down"));
+    // The first query is the middleware's user lookup; fail the second one
+    const real = pool.query.bind(pool);
+    jest
+      .spyOn(pool, "query")
+      .mockImplementationOnce(real)
+      .mockRejectedValueOnce(new Error("db down"));
 
-    const res = await request(app).get("/api/tasks");
+    const res = await api.get("/api/tasks");
 
     expect(res.status).toBe(500);
   });
@@ -173,9 +282,10 @@ describe("PATCH /api/tasks/:id", () => {
     const { body } = await createTask({ title: "Old", description: "keep" });
     const { id, createdAt } = body.data;
 
-    const res = await request(app)
-      .patch(`/api/tasks/${id}`)
-      .send({ title: "New", completed: true });
+    const res = await api.patch(`/api/tasks/${id}`, {
+      title: "New",
+      completed: true,
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.data).toMatchObject({
@@ -191,9 +301,11 @@ describe("PATCH /api/tasks/:id", () => {
     const { body } = await createTask();
     const { id, createdAt } = body.data;
 
-    const res = await request(app)
-      .patch(`/api/tasks/${id}`)
-      .send({ id: "hacked", createdAt: "1999-01-01", completed: true });
+    const res = await api.patch(`/api/tasks/${id}`, {
+      id: "hacked",
+      createdAt: "1999-01-01",
+      completed: true,
+    });
 
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(id);
@@ -208,17 +320,15 @@ describe("PATCH /api/tasks/:id", () => {
   ])("rejects %s with 400", async (_name, payload) => {
     const { body } = await createTask();
 
-    const res = await request(app)
-      .patch(`/api/tasks/${body.data.id}`)
-      .send(payload);
+    const res = await api.patch(`/api/tasks/${body.data.id}`, payload);
 
     expect(res.status).toBe(400);
   });
 
   test("returns 404 for an unknown id", async () => {
-    const res = await request(app)
-      .patch("/api/tasks/does-not-exist")
-      .send({ completed: true });
+    const res = await api.patch("/api/tasks/does-not-exist", {
+      completed: true,
+    });
 
     expect(res.status).toBe(404);
   });
@@ -228,20 +338,20 @@ describe("DELETE /api/tasks/:id", () => {
   test("deletes a task", async () => {
     const { body } = await createTask();
 
-    const res = await request(app).delete(`/api/tasks/${body.data.id}`);
+    const res = await api.delete(`/api/tasks/${body.data.id}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.id).toBe(body.data.id);
 
-    const after = await request(app).get(`/api/tasks/${body.data.id}`);
+    const after = await api.get(`/api/tasks/${body.data.id}`);
     expect(after.status).toBe(404);
   });
 
   test("returns 404 when deleting twice", async () => {
     const { body } = await createTask();
 
-    await request(app).delete(`/api/tasks/${body.data.id}`);
-    const res = await request(app).delete(`/api/tasks/${body.data.id}`);
+    await api.delete(`/api/tasks/${body.data.id}`);
+    const res = await api.delete(`/api/tasks/${body.data.id}`);
 
     expect(res.status).toBe(404);
   });

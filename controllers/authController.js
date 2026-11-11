@@ -5,7 +5,16 @@ const config = require("../config/config");
 const User = require("../models/userModel");
 
 const BCRYPT_ROUNDS = 10;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Deliberately simple and linear-time (no nested backtracking): exactly one
+// "@", no spaces, a dot inside the domain, and at most 254 characters.
+const isValidEmail = (email) => {
+  if (email.length > 254 || /\s/.test(email)) return false;
+  const parts = email.split("@");
+  if (parts.length !== 2 || !parts[0]) return false;
+  const dot = parts[1].indexOf(".");
+  return dot > 0 && !parts[1].endsWith(".");
+};
 
 // The token carries only the user id. Anything else (like the role) is
 // looked up in the database when needed, so it can never go stale.
@@ -25,7 +34,7 @@ const register = async (req, res, next) => {
     if (typeof name !== "string" || !name.trim()) {
       return badRequest(res, "A name is required");
     }
-    if (typeof email !== "string" || !EMAIL_PATTERN.test(email.trim())) {
+    if (typeof email !== "string" || !isValidEmail(email.trim())) {
       return badRequest(res, "A valid email is required");
     }
     if (typeof password !== "string" || password.length < 8) {
@@ -90,4 +99,9 @@ const login = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login };
+// GET /api/auth/me (req.user is set by the authenticate middleware)
+const me = (req, res) => {
+  res.status(200).json({ success: true, data: req.user });
+};
+
+module.exports = { register, login, me };
