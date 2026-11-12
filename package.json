@@ -14,7 +14,13 @@
     "type": "git",
     "url": "git+https://github.com/nzibukaemmanuel/Task-Tracker-with-Authentication.git"
   },
-  "keywords": ["express", "postgresql", "jwt", "bcrypt", "rbac"],
+  "keywords": [
+    "express",
+    "postgresql",
+    "jwt",
+    "bcrypt",
+    "rbac"
+  ],
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/nzibukaemmanuel/Task-Tracker-with-Authentication/issues"
@@ -25,7 +31,8 @@
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "jest": "^30.5.2",

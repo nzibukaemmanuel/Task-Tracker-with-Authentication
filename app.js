@@ -1,9 +1,11 @@
 require("dotenv").config();
 
 const express = require("express");
+const swaggerUi = require("swagger-ui-express");
 
 const config = require("./config/config");
 const pool = require("./config/db");
+const openapi = require("./config/openapi");
 
 const Task = require("./models/Task");
 const authRoutes = require("./routes/authRoutes");
@@ -20,6 +22,18 @@ app.disable("x-powered-by");
 
 // Built-in middleware
 app.use(express.json());
+
+// Interactive API docs (Swagger UI): log in, click "Authorize", try the API.
+// The raw OpenAPI description is at /api-docs.json.
+app.get("/api-docs.json", (req, res) => res.status(200).json(openapi));
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(openapi, {
+    customSiteTitle: "Task Tracker API",
+    swaggerOptions: { persistAuthorization: true },
+  })
+);
 
 // Welcome route
 app.get("/", (req, res) => {

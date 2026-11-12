@@ -92,14 +92,15 @@ A request to `DELETE /api/tasks/7`:
 
 ## Testing
 
-`npm test` runs four suites against a separate `<DB_NAME>_test` database (126 tests):
+`npm test` runs five suites against a separate `<DB_NAME>_test` database (158 tests):
 
 - `auth.test.js`: registration and login validation, duplicates, hashing, token contents.
 - `api.test.js`: token verification (missing, wrong scheme, garbage, forged, tampered, expired, deleted user), protection of every task route, CRUD, PUT, ownership, admin access and response formats.
 - `admin.test.js`: the `create-admin` command, the `authorize` middleware and `GET /api/users`.
 - `config.test.js`: the server refuses to start without a strong `JWT_SECRET` (missing, too short, placeholder).
+- `docs.test.js`: Swagger UI is served, and every documented endpoint exists and is public or protected exactly as the docs say (so the docs cannot drift from the code).
 
-A Postman collection in `docs/postman/` walks through the same flows by hand.
+A Postman collection in `docs/postman/` and the Swagger UI at `/api-docs` walk through the same flows by hand.
 
 ## Running the project
 
@@ -119,7 +120,7 @@ npm test               # integration tests
 
 ## Limitations and extensions
 
-Not implemented (the lab lists them as optional): refresh tokens, password reset, email verification, rate limiting, Helmet, logout and session invalidation, activity logging, profile management and Swagger docs.
+Not implemented (the lab lists them as optional): refresh tokens, password reset, email verification, rate limiting, Helmet, logout and session invalidation, activity logging and profile management. (Swagger UI is implemented: see `/api-docs`.)
 
 Other limits:
 

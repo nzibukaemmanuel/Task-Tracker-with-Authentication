@@ -25,7 +25,7 @@ ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=adminpass123 npm run create-admin
 npm run dev                          # http://localhost:5000
 ```
 
-**Option A: the automated suite** (126 tests across 4 files, against a separate `_test` database):
+**Option A: the automated suite** (158 tests across 5 files, against a separate `_test` database):
 
 ```bash
 npm test
@@ -37,7 +37,9 @@ npm test
 npx newman run docs/postman/task-tracker-auth.postman_collection.json
 ```
 
-**Option C: by hand with curl:**
+**Option C: Swagger UI in the browser** (open `http://localhost:5000/api-docs` with the server running): run **POST /api/auth/login**, copy the `token`, click **Authorize**, paste it, and try any padlocked endpoint. See the README for the full steps.
+
+**Option D: by hand with curl:**
 
 ```bash
 curl -i localhost:5000/api/tasks                                   # 401 Authentication required
@@ -153,13 +155,13 @@ middleware/    authMiddleware.js, roleMiddleware.js, notFound + error handlers
 models/        User.js, Task.js
 routes/        authRoutes.js, taskRoutes.js, userRoutes.js
 db/            schema.sql, init.js, createAdmin.js
-tests/         4 suites (auth 21, api 78, admin 17, config 10 tests)
+tests/         5 suites (auth 21, api 78, admin 17, config 10, docs 32 tests)
 docs/          this guide, LAB_EXPLANATION.md, postman/
 ```
 
 `userController.js` and `userRoutes.js` are additions, for the admin user list; the brief's tree has no equivalent.
 
-Documents: the [README](../README.md) (setup, endpoints, errors, deployment), [LAB_EXPLANATION.md](LAB_EXPLANATION.md) (design decisions and request flow), and the Postman collection.
+Documents: the [README](../README.md) (setup, endpoints, errors, deployment), [LAB_EXPLANATION.md](LAB_EXPLANATION.md) (design decisions and request flow), the Postman collection, and live API docs at `/api-docs` (Swagger UI, described in `config/openapi.js`).
 
 ## 4. Rubric summary
 
@@ -187,13 +189,13 @@ These are deliberate. Each is also noted in the README or LAB_EXPLANATION.
 
 | Check | Result |
 |---|---|
-| `npm test` | 126 tests in 4 suites, all passing |
+| `npm test` | 158 tests in 5 suites, all passing |
 | Postman collection run with Newman against the live API | 28 requests, 48 assertions, 0 failed, and re-runnable |
 | Tests prove they can fail | With the 500-message fix, the placeholder-secret check and the algorithm pin removed, the matching tests fail; they pass with the fixes in place |
 
 ## 7. Not implemented
 
-The brief lists these as optional: refresh tokens, password reset, email verification, rate limiting, Helmet, activity logging, profile management, logout and session invalidation, and Swagger. None is built.
+The brief lists these as optional: refresh tokens, password reset, email verification, rate limiting, Helmet, activity logging, profile management, and logout and session invalidation. None of these is built. (Swagger UI, also optional, is implemented.)
 
 Known limits:
 

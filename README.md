@@ -6,6 +6,15 @@ A RESTful Task Tracker API built with **Express.js** and **PostgreSQL**, secured
 - Logging in returns a **JSON Web Token** that must be sent with every task request.
 - Users can only see and manage **their own tasks**.
 - **Admins** can see and manage **all tasks** and list all users.
+- **Swagger UI** at `/api-docs` lets you log in, authorize once and try every endpoint from the browser.
+
+## Quick start
+
+```bash
+npm install
+npm run db:init      # after creating the database and your .env (see Getting started)
+npm run dev          # then open http://localhost:5000/api-docs
+```
 
 ## Topics covered
 
@@ -79,13 +88,44 @@ npm start         # production, plain node
 
 ### 5. Create an admin (optional)
 
-Nobody can register as an admin through the API. Create one on the command line:
+Nobody can register as an admin through the API. Create one on the command line. Setting environment variables differs by shell:
+
+```powershell
+# Windows PowerShell
+$env:ADMIN_EMAIL="admin@example.com"; $env:ADMIN_PASSWORD="a-strong-password"; npm run create-admin
+```
 
 ```bash
+# macOS, Linux, Git Bash
 ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=a-strong-password npm run create-admin
 ```
 
+```bat
+:: Windows cmd (keep the quotes: without them a trailing space becomes part of the password)
+set "ADMIN_EMAIL=admin@example.com" && set "ADMIN_PASSWORD=a-strong-password" && npm run create-admin
+```
+
+The password must be at least 8 characters. You should see `Admin ready: admin@example.com`.
+
 If the email already belongs to a user, that account is promoted to admin and its password is replaced.
+
+## Try the API in the browser (Swagger UI)
+
+With the server running, open **http://localhost:5000/api-docs**. There is nothing to install.
+
+1. Expand **POST /api/auth/register** (or **POST /api/auth/login**), click **Try it out**, edit the example body and click **Execute**.
+2. In the response, copy the value of `token` (just the string, without the quotes).
+3. Click the green **Authorize** button at the top of the page, paste the token, click **Authorize**, then **Close**. The padlocks close.
+4. Try any endpoint, for example **POST /api/tasks** and then **GET /api/tasks**. Swagger sends `Authorization: Bearer <token>` for you. Paste only the token: the `Bearer ` prefix is added automatically.
+
+**To act as the admin:** log in with the admin account, copy that token, click **Authorize**, then **Logout**, and authorize again with the new token. **GET /api/users** now works; as a regular user it returns `403`.
+
+Good to know:
+
+- Tokens expire after an hour (`JWT_EXPIRES_IN`). When you see `Token expired`, log in again and re-authorize.
+- Swagger remembers your token across page reloads. **Authorize → Logout** clears it.
+- The raw OpenAPI description is at `/api-docs.json`. It is written in `config/openapi.js`, and `tests/docs.test.js` fails if a documented endpoint stops existing or changes between public and protected.
+- Prefer another tool? A [Postman collection](docs/postman/task-tracker-auth.postman_collection.json) covers every flow too.
 
 ## Project structure
 
@@ -95,6 +135,7 @@ Task-Tracker-with-Authentication/
 ├── server.js                    # Entry point: starts listening on PORT
 ├── config/
 │   ├── config.js                # PORT, NODE_ENV, JWT secret and expiry
+│   ├── openapi.js               # OpenAPI description shown by Swagger UI (/api-docs)
 │   └── db.js                    # PostgreSQL connection pool (reads DB_* variables)
 ├── db/
 │   ├── schema.sql               # users and tasks tables
@@ -119,7 +160,7 @@ Task-Tracker-with-Authentication/
 ├── docs/
 │   ├── REVIEWER_GUIDE.md        # requirement-by-requirement guide for the reviewer
 │   ├── LAB_EXPLANATION.md       # design decisions and how a request flows
-│   └── postman/                 # Postman collection to try every flow
+│   └── postman/                 # Postman collection to try every flow (Swagger UI is at /api-docs)
 ├── tests/                       # Jest + Supertest suite and test-database setup
 ├── jest.config.js
 ├── render.yaml                  # Render blueprint (web service + PostgreSQL)
@@ -195,6 +236,8 @@ Base URL: `http://localhost:5000`
 | GET | `/` | Welcome message | 200 |
 | GET | `/health` | Status, uptime, task count | 200 |
 | GET | `/db-test` | Confirms the database connection | 200 |
+| GET | `/api-docs` | Swagger UI: interactive API documentation | 200 |
+| GET | `/api-docs.json` | The OpenAPI description as JSON | 200 |
 | POST | `/api/auth/register` (also `/auth/register`) | Create an account: `name`, `email`, `password` (min 8 characters). Returns a token | 201 |
 | POST | `/api/auth/login` (also `/auth/login`) | Log in: `email`, `password`. Returns a token | 200 |
 
@@ -251,7 +294,23 @@ curl -X PATCH http://localhost:5000/api/tasks/1 \
 curl -X DELETE http://localhost:5000/api/tasks/1 -H "Authorization: Bearer $TOKEN"
 ```
 
-A [Postman collection](docs/postman/task-tracker-auth.postman_collection.json) covering every flow is included.
+The same flow in Windows PowerShell (`curl` there is an alias for something else, so use `Invoke-RestMethod`):
+
+```powershell
+# Log in and keep the token
+$r = Invoke-RestMethod -Method Post -Uri http://localhost:5000/api/auth/login `
+  -ContentType "application/json" `
+  -Body '{"email":"ada@example.com","password":"password123"}'
+$token = $r.token
+
+# Use it
+$h = @{ Authorization = "Bearer $token" }
+Invoke-RestMethod -Method Post -Uri http://localhost:5000/api/tasks -Headers $h `
+  -ContentType "application/json" -Body '{"title":"Write the README"}'
+Invoke-RestMethod http://localhost:5000/api/tasks -Headers $h
+```
+
+Prefer clicking to typing? Use the [Swagger UI](#try-the-api-in-the-browser-swagger-ui) at `/api-docs`, or the [Postman collection](docs/postman/task-tracker-auth.postman_collection.json).
 
 **Reviewing this lab?** Start with the [Reviewer Guide](docs/REVIEWER_GUIDE.md): it maps every requirement and rubric item to the code and shows how to verify it.
 
@@ -289,7 +348,7 @@ npm test
 
 The Jest + Supertest suite sends real HTTP requests to the app and hits a real PostgreSQL database. To keep your data safe, tests automatically use a **separate database named `<DB_NAME>_test`** (for example `task_tracker_db_test`). `tests/globalSetup.js` creates it and the tables if needed, so the `DB_USER` must be allowed to create databases. Tables are truncated before every test, and the files run one after another (`--runInBand`) because they share that database.
 
-It covers registration and login (validation, duplicates, hashing), token verification (missing, forged, tampered, expired, deleted user), route protection, ownership (users cannot read, change or delete each other's tasks), admin access, the admin-only user list, response formats, and the startup check for `JWT_SECRET`.
+It covers registration and login (validation, duplicates, hashing), token verification (missing, forged, tampered, expired, deleted user), route protection, ownership (users cannot read, change or delete each other's tasks), admin access, the admin-only user list, response formats, the startup check for `JWT_SECRET`, and that the Swagger docs match the real routes.
 
 ## Deploying to Render
 
@@ -305,6 +364,24 @@ Notes:
 
 - The free web service sleeps when idle, so the first request after a pause is slow. Check Render's current free-plan terms for how long the free database is kept.
 - The web service reaches the database over Render's internal network, so no SSL setup is needed. To connect from your own machine to a Render database you would need its external URL and SSL, which `config/db.js` does not enable.
+
+## Troubleshooting
+
+| You see | Cause and fix |
+|---|---|
+| Server stops at startup with `JWT_SECRET is not set` | Add `JWT_SECRET` to `.env` (see step 3). |
+| `JWT_SECRET is too short` or `still the placeholder` | Use a real secret of at least 32 characters: `node -p "require('crypto').randomBytes(32).toString('hex')"`. |
+| `EADDRINUSE: address already in use :::5000` | Another process uses the port. Stop it, or set a different `PORT` in `.env`. |
+| `401 Authentication required` | No token was sent. In Swagger click **Authorize**; in other tools send `Authorization: Bearer <token>`. |
+| `401 Invalid token` | The token is mistyped, was cut short, or was pasted with `Bearer ` in front **in Swagger** (it adds the prefix itself). Copy only the token string. |
+| `401 Token expired` | Tokens last `JWT_EXPIRES_IN` (default 1 hour). Log in again. |
+| `401 Invalid email or password` when logging in as the admin | The admin does not exist yet. Run `npm run create-admin` (step 5). |
+| `403 You do not have permission` | You are logged in as a regular user. The endpoint is admin only. |
+| `404 Task not found` for a task you know exists | It belongs to another user, or the id is wrong. Users only see their own tasks. |
+| `Failed to create admin: ...` | `ADMIN_EMAIL` must be a valid email and `ADMIN_PASSWORD` at least 8 characters. Check you set the variables the way your shell expects (step 5). |
+| `500 Internal Server Error` | Outside development the cause is hidden from the response on purpose. Read the server terminal, where the real error is logged. A common one is the database not running or wrong `DB_*` values. |
+| `relation "users" does not exist`, or errors about `user_id` | The tables are missing or from an older version. Run `npm run db:init` (safe to re-run). |
+| Tests fail while creating the test database | `DB_USER` needs permission to create databases (the suite makes `<DB_NAME>_test`). |
 
 ## Scripts
 
@@ -323,6 +400,7 @@ Notes:
 - **dotenv**: loads `.env` into `process.env`
 - **bcryptjs**: password hashing
 - **jsonwebtoken**: signing and verifying JWTs
+- **swagger-ui-express**: interactive API docs at `/api-docs`
 - **nodemon** (dev), **jest** (dev), **supertest** (dev)
 
 ## Limitations and ideas
