@@ -25,6 +25,15 @@ ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=adminpass123 npm run create-admin
 npm run dev                          # http://localhost:5000
 ```
 
+On **Windows PowerShell**, set the variables like this instead (the bash line above does not work there). Replace the name, email and password with your own; the password needs at least 8 characters:
+
+```powershell
+cd C:\Users\Amalitech\Desktop\LABS\Task-Tracker-with-Authentication   # your project folder
+$env:ADMIN_NAME="Your Name"; $env:ADMIN_EMAIL="you@example.com"; $env:ADMIN_PASSWORD="StrongPass123"; npm run create-admin
+```
+
+You should see `Admin ready: you@example.com`. Then log in with that email and password at `POST /api/auth/login` (or in Swagger UI) to get the admin token.
+
 **Option A: the automated suite** (158 tests across 5 files, against a separate `_test` database):
 
 ```bash
@@ -110,6 +119,15 @@ Design choices:
 | user: own tasks only | See requirement 3. | |
 
 Admins cannot be created through the API: `register` never reads a role from the request body (a test sends `"role": "admin"` and still gets a `user`). The only way is the command line, `npm run create-admin` (`db/createAdmin.js`), which needs access to the server and its database.
+
+To create an admin by hand in Windows PowerShell:
+
+```powershell
+cd C:\Users\Amalitech\Desktop\LABS\Task-Tracker-with-Authentication
+$env:ADMIN_NAME="Your Name"; $env:ADMIN_EMAIL="you@example.com"; $env:ADMIN_PASSWORD="StrongPass123"; npm run create-admin
+```
+
+(bash: `ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run create-admin`.) If the email already belongs to a user, that account is promoted and its password replaced.
 
 **Check:** a regular user calling `GET /api/users` gets `403`; an admin gets the list. A user promoted with `create-admin` gains access on their existing token, because the role is read from the database.
 
